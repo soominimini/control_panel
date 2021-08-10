@@ -1,0 +1,849 @@
+<html>
+<head>
+<title>remote_control.py</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<style type="text/css">
+.s0 { color: #808080;}
+.s1 { color: #a9b7c6;}
+.s2 { color: #629755; font-style: italic;}
+.s3 { color: #cc7832;}
+.s4 { color: #6a8759;}
+.s5 { color: #6897bb;}
+.s6 { color: #a5c261;}
+</style>
+</head>
+<body bgcolor="#2b2b2b">
+<table CELLSPACING=0 CELLPADDING=5 COLS=1 WIDTH="100%" BGCOLOR="#606060" >
+<tr><td><center>
+<font face="Arial, Helvetica" color="#000000">
+remote_control.py</font>
+</center></td></tr></table>
+<pre><span class="s0">#!/usr/bin/env python3</span>
+
+<span class="s0"># Copyright (c) 2018 Anki, Inc.</span>
+<span class="s0">#</span>
+<span class="s0"># Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);</span>
+<span class="s0"># you may not use this file except in compliance with the License.</span>
+<span class="s0"># You may obtain a copy of the License in the file LICENSE.txt or at</span>
+<span class="s0">#</span>
+<span class="s0">#     https://www.apache.org/licenses/LICENSE-2.0</span>
+<span class="s0">#</span>
+<span class="s0"># Unless required by applicable law or agreed to in writing, software</span>
+<span class="s0"># distributed under the License is distributed on an &quot;AS IS&quot; BASIS,</span>
+<span class="s0"># WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.</span>
+<span class="s0"># See the License for the specific language governing permissions and</span>
+<span class="s0"># limitations under the License.</span>
+
+<span class="s2">&quot;&quot;&quot;Control Vector using a webpage on your computer. 
+ 
+This example lets you control Vector by Remote Control, using a webpage served by Flask. 
+&quot;&quot;&quot;</span>
+
+<span class="s3">import </span><span class="s1">io</span>
+<span class="s3">import </span><span class="s1">json</span>
+<span class="s3">import </span><span class="s1">sys</span>
+<span class="s3">import </span><span class="s1">time</span>
+<span class="s3">from </span><span class="s1">enum </span><span class="s3">import </span><span class="s1">Enum</span>
+<span class="s3">from </span><span class="s1">lib </span><span class="s3">import </span><span class="s1">flask_helpers</span>
+
+<span class="s3">import </span><span class="s1">anki_vector</span>
+<span class="s3">from </span><span class="s1">anki_vector </span><span class="s3">import </span><span class="s1">util</span>
+<span class="s3">from </span><span class="s1">anki_vector </span><span class="s3">import </span><span class="s1">annotate</span>
+
+<span class="s3">try</span><span class="s1">:</span>
+    <span class="s3">from </span><span class="s1">flask </span><span class="s3">import </span><span class="s1">Flask</span><span class="s3">, </span><span class="s1">request</span>
+<span class="s3">except </span><span class="s1">ImportError:</span>
+    <span class="s1">sys.exit(</span><span class="s4">&quot;Cannot import from flask: Do `pip3 install --user flask` to install&quot;</span><span class="s1">)</span>
+
+<span class="s3">try</span><span class="s1">:</span>
+    <span class="s3">from </span><span class="s1">PIL </span><span class="s3">import </span><span class="s1">Image</span><span class="s3">, </span><span class="s1">ImageDraw</span>
+<span class="s3">except </span><span class="s1">ImportError:</span>
+    <span class="s1">sys.exit(</span><span class="s4">&quot;Cannot import from PIL: Do `pip3 install --user Pillow` to install&quot;</span><span class="s1">)</span>
+
+
+<span class="s3">def </span><span class="s1">create_default_image(image_width</span><span class="s3">, </span><span class="s1">image_height</span><span class="s3">, </span><span class="s1">do_gradient=</span><span class="s3">False</span><span class="s1">):</span>
+    <span class="s2">&quot;&quot;&quot;Create a place-holder PIL image to use until we have a live feed from Vector&quot;&quot;&quot;</span>
+    <span class="s1">image_bytes = bytearray([</span><span class="s5">0x70</span><span class="s3">, </span><span class="s5">0x70</span><span class="s3">, </span><span class="s5">0x70</span><span class="s1">]) * image_width * image_height</span>
+
+    <span class="s3">if </span><span class="s1">do_gradient:</span>
+        <span class="s1">i = </span><span class="s5">0</span>
+        <span class="s3">for </span><span class="s1">y </span><span class="s3">in </span><span class="s1">range(image_height):</span>
+            <span class="s3">for </span><span class="s1">x </span><span class="s3">in </span><span class="s1">range(image_width):</span>
+                <span class="s1">image_bytes[i] = int(</span><span class="s5">255.0 </span><span class="s1">* (x / image_width))   </span><span class="s0"># R</span>
+                <span class="s1">image_bytes[i + </span><span class="s5">1</span><span class="s1">] = int(</span><span class="s5">255.0 </span><span class="s1">* (y / image_height))  </span><span class="s0"># G</span>
+                <span class="s1">image_bytes[i + </span><span class="s5">2</span><span class="s1">] = </span><span class="s5">0                                </span><span class="s0"># B</span>
+                <span class="s1">i += </span><span class="s5">3</span>
+
+    <span class="s1">image = Image.frombytes(</span><span class="s4">'RGB'</span><span class="s3">, </span><span class="s1">(image_width</span><span class="s3">, </span><span class="s1">image_height)</span><span class="s3">, </span><span class="s1">bytes(image_bytes))</span>
+    <span class="s3">return </span><span class="s1">image</span>
+
+
+<span class="s1">flask_app = Flask(__name__)</span>
+<span class="s1">_default_camera_image = create_default_image(</span><span class="s5">320</span><span class="s3">, </span><span class="s5">240</span><span class="s1">)</span>
+<span class="s1">_is_mouse_look_enabled_by_default = </span><span class="s3">False</span>
+
+
+<span class="s3">def </span><span class="s1">remap_to_range(x</span><span class="s3">, </span><span class="s1">x_min</span><span class="s3">, </span><span class="s1">x_max</span><span class="s3">, </span><span class="s1">out_min</span><span class="s3">, </span><span class="s1">out_max):</span>
+    <span class="s2">&quot;&quot;&quot;convert x (in x_min..x_max range) to out_min..out_max range&quot;&quot;&quot;</span>
+    <span class="s3">if </span><span class="s1">x &lt; x_min:</span>
+        <span class="s3">return </span><span class="s1">out_min</span>
+    <span class="s3">if </span><span class="s1">x &gt; x_max:</span>
+        <span class="s3">return </span><span class="s1">out_max</span>
+    <span class="s1">ratio = (x - x_min) / (x_max - x_min)</span>
+    <span class="s3">return </span><span class="s1">out_min + ratio * (out_max - out_min)</span>
+
+
+<span class="s3">class </span><span class="s1">DebugAnnotations(Enum):</span>
+    <span class="s1">DISABLED = </span><span class="s5">0</span>
+    <span class="s1">ENABLED_VISION = </span><span class="s5">1</span>
+    <span class="s1">ENABLED_ALL = </span><span class="s5">2</span>
+
+
+<span class="s0"># Annotator for displaying RobotState (position, etc.) on top of the camera feed</span>
+<span class="s3">class </span><span class="s1">RobotStateDisplay(annotate.Annotator):</span>
+    <span class="s3">def </span><span class="s1">apply(self</span><span class="s3">, </span><span class="s1">image</span><span class="s3">, </span><span class="s1">scale):</span>
+        <span class="s1">d = ImageDraw.Draw(image)</span>
+
+        <span class="s1">bounds = [</span><span class="s5">3</span><span class="s3">, </span><span class="s5">0</span><span class="s3">, </span><span class="s1">image.width</span><span class="s3">, </span><span class="s1">image.height]</span>
+
+        <span class="s3">def </span><span class="s1">print_line(text_line):</span>
+            <span class="s1">text = annotate.ImageText(text_line</span><span class="s3">, </span><span class="s1">position=annotate.AnnotationPosition.TOP_LEFT</span><span class="s3">, </span><span class="s1">outline_color=</span><span class="s4">'black'</span><span class="s3">, </span><span class="s1">color=</span><span class="s4">'lightblue'</span><span class="s1">)</span>
+            <span class="s1">text.render(d</span><span class="s3">, </span><span class="s1">bounds)</span>
+            <span class="s1">TEXT_HEIGHT = </span><span class="s5">11</span>
+            <span class="s1">bounds[</span><span class="s5">1</span><span class="s1">] += TEXT_HEIGHT</span>
+
+        <span class="s1">robot = self.world.robot  </span><span class="s0"># type: robot.Robot</span>
+
+        <span class="s0"># Display the Pose info for the robotddd</span>
+        <span class="s1">pose = robot.pose</span>
+        <span class="s1">print_line(</span><span class="s4">'Pose: Pos = &lt;%.1f, %.1f, %.1f&gt;' </span><span class="s1">% pose.position.x_y_z)</span>
+        <span class="s1">print_line(</span><span class="s4">'Pose: Rot quat = &lt;%.1f, %.1f, %.1f, %.1f&gt;' </span><span class="s1">% pose.rotation.q0_q1_q2_q3)</span>
+        <span class="s1">print_line(</span><span class="s4">'Pose: angle_z = %.1f' </span><span class="s1">% pose.rotation.angle_z.degrees)</span>
+        <span class="s1">print_line(</span><span class="s4">'Pose: origin_id: %s' </span><span class="s1">% pose.origin_id)</span>
+
+        <span class="s0"># Display the Accelerometer and Gyro data for the robot</span>
+        <span class="s1">print_line(</span><span class="s4">'Accelmtr: &lt;%.1f, %.1f, %.1f&gt;' </span><span class="s1">% robot.accel.x_y_z)</span>
+        <span class="s1">print_line(</span><span class="s4">'Gyro: &lt;%.1f, %.1f, %.1f&gt;' </span><span class="s1">% robot.gyro.x_y_z)</span>
+
+
+<span class="s3">class </span><span class="s1">RemoteControlVector:</span>
+
+    <span class="s3">def </span><span class="s1">__init__(self</span><span class="s3">, </span><span class="s1">robot):</span>
+        <span class="s1">self.vector = robot</span>
+
+        <span class="s0"># don't send motor messages if it matches the last setting</span>
+        <span class="s1">self.last_lift = </span><span class="s3">None</span>
+        <span class="s1">self.last_head = </span><span class="s3">None</span>
+        <span class="s1">self.last_wheels = </span><span class="s3">None</span>
+
+        <span class="s1">self.drive_forwards = </span><span class="s5">0</span>
+        <span class="s1">self.drive_back = </span><span class="s5">0</span>
+        <span class="s1">self.turn_left = </span><span class="s5">0</span>
+        <span class="s1">self.turn_right = </span><span class="s5">0</span>
+        <span class="s1">self.lift_up = </span><span class="s5">0</span>
+        <span class="s1">self.lift_down = </span><span class="s5">0</span>
+        <span class="s1">self.head_up = </span><span class="s5">0</span>
+        <span class="s1">self.head_down = </span><span class="s5">0</span>
+
+        <span class="s1">self.go_fast = </span><span class="s5">0</span>
+        <span class="s1">self.go_slow = </span><span class="s5">0</span>
+
+        <span class="s1">self.is_mouse_look_enabled = _is_mouse_look_enabled_by_default</span>
+        <span class="s1">self.mouse_dir = </span><span class="s5">0</span>
+
+        <span class="s1">all_anim_names = self.vector.anim.anim_list</span>
+        <span class="s1">all_anim_names.sort()</span>
+        <span class="s1">self.anim_names = []</span>
+
+        <span class="s0"># Hide a few specific test animations that don't behave well</span>
+        <span class="s1">bad_anim_names = [</span>
+            <span class="s4">&quot;ANIMATION_TEST&quot;</span><span class="s3">,</span>
+            <span class="s4">&quot;soundTestAnim&quot;</span><span class="s1">]</span>
+
+        <span class="s3">for </span><span class="s1">anim_name </span><span class="s3">in </span><span class="s1">all_anim_names:</span>
+            <span class="s3">if </span><span class="s1">anim_name </span><span class="s3">not in </span><span class="s1">bad_anim_names:</span>
+                <span class="s1">self.anim_names.append(anim_name)</span>
+
+        <span class="s1">default_anims_for_keys = [</span><span class="s4">&quot;anim_turn_left_01&quot;</span><span class="s3">,  </span><span class="s0"># 0</span>
+                                  <span class="s4">&quot;anim_blackjack_victorwin_01&quot;</span><span class="s3">,  </span><span class="s0"># 1</span>
+                                  <span class="s4">&quot;anim_pounce_success_02&quot;</span><span class="s3">,  </span><span class="s0"># 2</span>
+                                  <span class="s4">&quot;anim_feedback_shutup_01&quot;</span><span class="s3">,  </span><span class="s0"># 3</span>
+                                  <span class="s4">&quot;anim_knowledgegraph_success_01&quot;</span><span class="s3">,  </span><span class="s0"># 4</span>
+                                  <span class="s4">&quot;anim_wakeword_groggyeyes_listenloop_01&quot;</span><span class="s3">,  </span><span class="s0"># 5</span>
+                                  <span class="s4">&quot;anim_fistbump_success_01&quot;</span><span class="s3">,  </span><span class="s0"># 6</span>
+                                  <span class="s4">&quot;anim_reacttoface_unidentified_01&quot;</span><span class="s3">,  </span><span class="s0"># 7</span>
+                                  <span class="s4">&quot;anim_rtpickup_loop_10&quot;</span><span class="s3">,  </span><span class="s0"># 8</span>
+                                  <span class="s4">&quot;anim_volume_stage_05&quot;</span><span class="s1">]  </span><span class="s0"># 9</span>
+
+        <span class="s1">self.anim_index_for_key = [</span><span class="s5">0</span><span class="s1">] * </span><span class="s5">10</span>
+        <span class="s1">kI = </span><span class="s5">0</span>
+        <span class="s3">for </span><span class="s1">default_key </span><span class="s3">in </span><span class="s1">default_anims_for_keys:</span>
+            <span class="s3">try</span><span class="s1">:</span>
+                <span class="s1">anim_idx = self.anim_names.index(default_key)</span>
+            <span class="s3">except </span><span class="s1">ValueError:</span>
+                <span class="s1">print(</span><span class="s4">&quot;Error: default_anim %s is not in the list of animations&quot; </span><span class="s1">% default_key)</span>
+                <span class="s1">anim_idx = kI</span>
+            <span class="s1">self.anim_index_for_key[kI] = anim_idx</span>
+            <span class="s1">kI += </span><span class="s5">1</span>
+
+        <span class="s1">all_anim_trigger_names = self.vector.anim.anim_trigger_list</span>
+        <span class="s1">self.anim_trigger_names = []</span>
+
+        <span class="s1">bad_anim_trigger_names = [</span>
+            <span class="s4">&quot;InvalidAnimTrigger&quot;</span><span class="s3">,</span>
+            <span class="s4">&quot;UnitTestAnim&quot;</span><span class="s1">]</span>
+
+        <span class="s3">for </span><span class="s1">anim_trigger_name </span><span class="s3">in </span><span class="s1">all_anim_trigger_names:</span>
+            <span class="s3">if </span><span class="s1">anim_trigger_name </span><span class="s3">not in </span><span class="s1">bad_anim_trigger_names:</span>
+                <span class="s1">self.anim_trigger_names.append(anim_trigger_name)</span>
+
+        <span class="s1">self.selected_anim_trigger_name = self.anim_trigger_names[</span><span class="s5">0</span><span class="s1">]</span>
+
+        <span class="s1">self.action_queue = []</span>
+        <span class="s1">self.text_to_say = </span><span class="s4">&quot;Hi I'm Vector&quot;</span>
+
+    <span class="s3">def </span><span class="s1">set_anim(self</span><span class="s3">, </span><span class="s1">key_index</span><span class="s3">, </span><span class="s1">anim_index):</span>
+        <span class="s1">self.anim_index_for_key[key_index] = anim_index</span>
+
+    <span class="s3">def </span><span class="s1">handle_mouse(self</span><span class="s3">, </span><span class="s1">mouse_x</span><span class="s3">, </span><span class="s1">mouse_y):</span>
+        <span class="s2">&quot;&quot;&quot;Called whenever mouse moves 
+            mouse_x, mouse_y are in in 0..1 range (0,0 = top left, 1,1 = bottom right of window) 
+        &quot;&quot;&quot;</span>
+        <span class="s3">if </span><span class="s1">self.is_mouse_look_enabled:</span>
+            <span class="s1">mouse_sensitivity = </span><span class="s5">1.5  </span><span class="s0"># higher = more twitchy</span>
+            <span class="s1">self.mouse_dir = remap_to_range(mouse_x</span><span class="s3">, </span><span class="s5">0.0</span><span class="s3">, </span><span class="s5">1.0</span><span class="s3">, </span><span class="s1">-mouse_sensitivity</span><span class="s3">, </span><span class="s1">mouse_sensitivity)</span>
+            <span class="s1">self.update_mouse_driving()</span>
+
+            <span class="s1">desired_head_angle = remap_to_range(mouse_y</span><span class="s3">, </span><span class="s5">0.0</span><span class="s3">, </span><span class="s5">1.0</span><span class="s3">, </span><span class="s5">45</span><span class="s3">, </span><span class="s1">-</span><span class="s5">25</span><span class="s1">)</span>
+            <span class="s1">head_angle_delta = desired_head_angle - util.radians(self.vector.head_angle_rad).degrees</span>
+            <span class="s1">head_vel = head_angle_delta * </span><span class="s5">0.03</span>
+            <span class="s3">if </span><span class="s1">self.last_head </span><span class="s3">and </span><span class="s1">head_vel == self.last_head:</span>
+                <span class="s3">return</span>
+            <span class="s1">self.last_head = head_vel</span>
+            <span class="s1">self.vector.motors.set_head_motor(head_vel)</span>
+
+    <span class="s3">def </span><span class="s1">set_mouse_look_enabled(self</span><span class="s3">, </span><span class="s1">is_mouse_look_enabled):</span>
+        <span class="s1">was_mouse_look_enabled = self.is_mouse_look_enabled</span>
+        <span class="s1">self.is_mouse_look_enabled = is_mouse_look_enabled</span>
+        <span class="s3">if not </span><span class="s1">is_mouse_look_enabled:</span>
+            <span class="s0"># cancel any current mouse-look turning</span>
+            <span class="s1">self.mouse_dir = </span><span class="s5">0</span>
+            <span class="s3">if </span><span class="s1">was_mouse_look_enabled:</span>
+                <span class="s1">self.update_mouse_driving()</span>
+                <span class="s1">self.update_head()</span>
+
+    <span class="s3">def </span><span class="s1">update_drive_state(self</span><span class="s3">, </span><span class="s1">key_code</span><span class="s3">, </span><span class="s1">is_key_down</span><span class="s3">, </span><span class="s1">speed_changed):</span>
+        <span class="s2">&quot;&quot;&quot;Update state of driving intent from keyboard, and if anything changed then call update_driving&quot;&quot;&quot;</span>
+        <span class="s1">update_driving = </span><span class="s3">True</span>
+        <span class="s3">if </span><span class="s1">key_code == ord(</span><span class="s4">'W'</span><span class="s1">):</span>
+            <span class="s1">self.drive_forwards = is_key_down</span>
+        <span class="s3">elif </span><span class="s1">key_code == ord(</span><span class="s4">'S'</span><span class="s1">):</span>
+            <span class="s1">self.drive_back = is_key_down</span>
+        <span class="s3">elif </span><span class="s1">key_code == ord(</span><span class="s4">'A'</span><span class="s1">):</span>
+            <span class="s1">self.turn_left = is_key_down</span>
+        <span class="s3">elif </span><span class="s1">key_code == ord(</span><span class="s4">'D'</span><span class="s1">):</span>
+            <span class="s1">self.turn_right = is_key_down</span>
+        <span class="s3">else</span><span class="s1">:</span>
+            <span class="s3">if not </span><span class="s1">speed_changed:</span>
+                <span class="s1">update_driving = </span><span class="s3">False</span>
+        <span class="s3">return </span><span class="s1">update_driving</span>
+
+    <span class="s3">def </span><span class="s1">update_lift_state(self</span><span class="s3">, </span><span class="s1">key_code</span><span class="s3">, </span><span class="s1">is_key_down</span><span class="s3">, </span><span class="s1">speed_changed):</span>
+        <span class="s2">&quot;&quot;&quot;Update state of lift move intent from keyboard, and if anything changed then call update_lift&quot;&quot;&quot;</span>
+        <span class="s1">update_lift = </span><span class="s3">True</span>
+        <span class="s3">if </span><span class="s1">key_code == ord(</span><span class="s4">'R'</span><span class="s1">):</span>
+            <span class="s1">self.lift_up = is_key_down</span>
+        <span class="s3">elif </span><span class="s1">key_code == ord(</span><span class="s4">'F'</span><span class="s1">):</span>
+            <span class="s1">self.lift_down = is_key_down</span>
+        <span class="s3">else</span><span class="s1">:</span>
+            <span class="s3">if not </span><span class="s1">speed_changed:</span>
+                <span class="s1">update_lift = </span><span class="s3">False</span>
+        <span class="s3">return </span><span class="s1">update_lift</span>
+
+    <span class="s3">def </span><span class="s1">update_head_state(self</span><span class="s3">, </span><span class="s1">key_code</span><span class="s3">, </span><span class="s1">is_key_down</span><span class="s3">, </span><span class="s1">speed_changed):</span>
+        <span class="s2">&quot;&quot;&quot;Update state of head move intent from keyboard, and if anything changed then call update_head&quot;&quot;&quot;</span>
+        <span class="s1">update_head = </span><span class="s3">True</span>
+        <span class="s3">if </span><span class="s1">key_code == ord(</span><span class="s4">'T'</span><span class="s1">):</span>
+            <span class="s1">self.head_up = is_key_down</span>
+        <span class="s3">elif </span><span class="s1">key_code == ord(</span><span class="s4">'G'</span><span class="s1">):</span>
+            <span class="s1">self.head_down = is_key_down</span>
+        <span class="s3">else</span><span class="s1">:</span>
+            <span class="s3">if not </span><span class="s1">speed_changed:</span>
+                <span class="s1">update_head = </span><span class="s3">False</span>
+        <span class="s3">return </span><span class="s1">update_head</span>
+
+    <span class="s3">def </span><span class="s1">handle_key(self</span><span class="s3">, </span><span class="s1">key_code</span><span class="s3">, </span><span class="s1">is_shift_down</span><span class="s3">, </span><span class="s1">is_alt_down</span><span class="s3">, </span><span class="s1">is_key_down):</span>
+        <span class="s2">&quot;&quot;&quot;Called on any key press or release 
+           Holding a key down may result in repeated handle_key calls with is_key_down==True 
+        &quot;&quot;&quot;</span>
+
+        <span class="s0"># Update desired speed / fidelity of actions based on shift/alt being held</span>
+        <span class="s1">was_go_fast = self.go_fast</span>
+        <span class="s1">was_go_slow = self.go_slow</span>
+
+        <span class="s1">self.go_fast = is_shift_down</span>
+        <span class="s1">self.go_slow = is_alt_down</span>
+
+        <span class="s1">speed_changed = (was_go_fast != self.go_fast) </span><span class="s3">or </span><span class="s1">(was_go_slow != self.go_slow)</span>
+
+        <span class="s1">update_driving = self.update_drive_state(key_code</span><span class="s3">, </span><span class="s1">is_key_down</span><span class="s3">, </span><span class="s1">speed_changed)</span>
+
+        <span class="s1">update_lift = self.update_lift_state(key_code</span><span class="s3">, </span><span class="s1">is_key_down</span><span class="s3">, </span><span class="s1">speed_changed)</span>
+
+        <span class="s1">update_head = self.update_head_state(key_code</span><span class="s3">, </span><span class="s1">is_key_down</span><span class="s3">, </span><span class="s1">speed_changed)</span>
+
+        <span class="s0"># Update driving, head and lift as appropriate</span>
+        <span class="s3">if </span><span class="s1">update_driving:</span>
+            <span class="s1">self.update_mouse_driving()</span>
+        <span class="s3">if </span><span class="s1">update_head:</span>
+            <span class="s1">self.update_head()</span>
+        <span class="s3">if </span><span class="s1">update_lift:</span>
+            <span class="s1">self.update_lift()</span>
+
+        <span class="s0"># Handle any keys being released (e.g. the end of a key-click)</span>
+        <span class="s3">if not </span><span class="s1">is_key_down:</span>
+            <span class="s3">if </span><span class="s1">ord(</span><span class="s4">'9'</span><span class="s1">) &gt;= key_code &gt;= ord(</span><span class="s4">'0'</span><span class="s1">):</span>
+                <span class="s1">anim_name = self.key_code_to_anim_name(key_code)</span>
+                <span class="s1">self.queue_action((self.vector.anim.play_animation</span><span class="s3">, </span><span class="s1">anim_name))</span>
+            <span class="s3">elif </span><span class="s1">key_code == ord(</span><span class="s4">' '</span><span class="s1">):</span>
+                <span class="s1">self.queue_action((self.vector.behavior.say_text</span><span class="s3">, </span><span class="s1">self.text_to_say))</span>
+            <span class="s3">elif </span><span class="s1">key_code == ord(</span><span class="s4">'X'</span><span class="s1">):</span>
+                <span class="s1">self.queue_action((self.vector.anim.play_animation_trigger</span><span class="s3">, </span><span class="s1">self.selected_anim_trigger_name))</span>
+
+    <span class="s3">def </span><span class="s1">key_code_to_anim_name(self</span><span class="s3">, </span><span class="s1">key_code):</span>
+        <span class="s1">key_num = key_code - ord(</span><span class="s4">'0'</span><span class="s1">)</span>
+        <span class="s1">anim_num = self.anim_index_for_key[key_num]</span>
+        <span class="s1">anim_name = self.anim_names[anim_num]</span>
+        <span class="s3">return </span><span class="s1">anim_name</span>
+
+    <span class="s3">def </span><span class="s1">func_to_name(self</span><span class="s3">, </span><span class="s1">func):</span>
+        <span class="s3">if </span><span class="s1">func == self.vector.behavior.say_text:</span>
+            <span class="s3">return </span><span class="s4">&quot;say_text&quot;</span>
+        <span class="s3">if </span><span class="s1">func == self.vector.anim.play_animation:</span>
+            <span class="s3">return </span><span class="s4">&quot;play_anim&quot;</span>
+        <span class="s3">return </span><span class="s4">&quot;UNKNOWN&quot;</span>
+
+    <span class="s3">def </span><span class="s1">action_to_text(self</span><span class="s3">, </span><span class="s1">action):</span>
+        <span class="s1">func</span><span class="s3">, </span><span class="s1">args = action</span>
+        <span class="s3">return </span><span class="s1">self.func_to_name(func) + </span><span class="s4">&quot;( &quot; </span><span class="s1">+ str(args) + </span><span class="s4">&quot; )&quot;</span>
+
+    <span class="s3">def </span><span class="s1">action_queue_to_text(self</span><span class="s3">, </span><span class="s1">action_queue):</span>
+        <span class="s1">out_text = </span><span class="s4">&quot;&quot;</span>
+        <span class="s1">i = </span><span class="s5">0</span>
+        <span class="s3">for </span><span class="s1">action </span><span class="s3">in </span><span class="s1">action_queue:</span>
+            <span class="s1">out_text += </span><span class="s4">&quot;[&quot; </span><span class="s1">+ str(i) + </span><span class="s4">&quot;] &quot; </span><span class="s1">+ self.action_to_text(action)</span>
+            <span class="s1">i += </span><span class="s5">1</span>
+        <span class="s3">return </span><span class="s1">out_text</span>
+
+    <span class="s3">def </span><span class="s1">queue_action(self</span><span class="s3">, </span><span class="s1">new_action):</span>
+        <span class="s3">if </span><span class="s1">len(self.action_queue) &gt; </span><span class="s5">10</span><span class="s1">:</span>
+            <span class="s1">self.action_queue.pop(</span><span class="s5">0</span><span class="s1">)</span>
+        <span class="s1">self.action_queue.append(new_action)</span>
+
+    <span class="s3">def </span><span class="s1">update(self):</span>
+        <span class="s2">&quot;&quot;&quot;Try and execute the next queued action&quot;&quot;&quot;</span>
+        <span class="s3">if </span><span class="s1">self.action_queue:</span>
+            <span class="s1">queued_action</span><span class="s3">, </span><span class="s1">action_args = self.action_queue[</span><span class="s5">0</span><span class="s1">]</span>
+            <span class="s3">if </span><span class="s1">queued_action(action_args):</span>
+                <span class="s1">self.action_queue.pop(</span><span class="s5">0</span><span class="s1">)</span>
+
+    <span class="s3">def </span><span class="s1">pick_speed(self</span><span class="s3">, </span><span class="s1">fast_speed</span><span class="s3">, </span><span class="s1">mid_speed</span><span class="s3">, </span><span class="s1">slow_speed):</span>
+        <span class="s3">if </span><span class="s1">self.go_fast:</span>
+            <span class="s3">if not </span><span class="s1">self.go_slow:</span>
+                <span class="s3">return </span><span class="s1">fast_speed</span>
+        <span class="s3">elif </span><span class="s1">self.go_slow:</span>
+            <span class="s3">return </span><span class="s1">slow_speed</span>
+        <span class="s3">return </span><span class="s1">mid_speed</span>
+
+    <span class="s3">def </span><span class="s1">update_lift(self):</span>
+        <span class="s1">lift_speed = self.pick_speed(</span><span class="s5">8</span><span class="s3">, </span><span class="s5">4</span><span class="s3">, </span><span class="s5">2</span><span class="s1">)</span>
+        <span class="s1">lift_vel = (self.lift_up - self.lift_down) * lift_speed</span>
+        <span class="s3">if </span><span class="s1">self.last_lift </span><span class="s3">and </span><span class="s1">lift_vel == self.last_lift:</span>
+            <span class="s3">return</span>
+        <span class="s1">self.last_lift = lift_vel</span>
+        <span class="s1">self.vector.motors.set_lift_motor(lift_vel)</span>
+
+    <span class="s3">def </span><span class="s1">update_head(self):</span>
+        <span class="s3">if not </span><span class="s1">self.is_mouse_look_enabled:</span>
+            <span class="s1">head_speed = self.pick_speed(</span><span class="s5">2</span><span class="s3">, </span><span class="s5">1</span><span class="s3">, </span><span class="s5">0.5</span><span class="s1">)</span>
+            <span class="s1">head_vel = (self.head_up - self.head_down) * head_speed</span>
+            <span class="s3">if </span><span class="s1">self.last_head </span><span class="s3">and </span><span class="s1">head_vel == self.last_head:</span>
+                <span class="s3">return</span>
+            <span class="s1">self.last_head = head_vel</span>
+            <span class="s1">self.vector.motors.set_head_motor(head_vel)</span>
+
+    <span class="s3">def </span><span class="s1">update_mouse_driving(self):</span>
+        <span class="s1">drive_dir = (self.drive_forwards - self.drive_back)</span>
+
+        <span class="s1">turn_dir = (self.turn_right - self.turn_left) + self.mouse_dir</span>
+        <span class="s3">if </span><span class="s1">drive_dir &lt; </span><span class="s5">0</span><span class="s1">:</span>
+            <span class="s0"># It feels more natural to turn the opposite way when reversing</span>
+            <span class="s1">turn_dir = -turn_dir</span>
+
+        <span class="s1">forward_speed = self.pick_speed(</span><span class="s5">150</span><span class="s3">, </span><span class="s5">75</span><span class="s3">, </span><span class="s5">50</span><span class="s1">)</span>
+        <span class="s1">turn_speed = self.pick_speed(</span><span class="s5">100</span><span class="s3">, </span><span class="s5">50</span><span class="s3">, </span><span class="s5">30</span><span class="s1">)</span>
+
+        <span class="s1">l_wheel_speed = (drive_dir * forward_speed) + (turn_speed * turn_dir)</span>
+        <span class="s1">r_wheel_speed = (drive_dir * forward_speed) - (turn_speed * turn_dir)</span>
+
+        <span class="s1">wheel_params = (l_wheel_speed</span><span class="s3">, </span><span class="s1">r_wheel_speed</span><span class="s3">, </span><span class="s1">l_wheel_speed * </span><span class="s5">4</span><span class="s3">, </span><span class="s1">r_wheel_speed * </span><span class="s5">4</span><span class="s1">)</span>
+        <span class="s3">if </span><span class="s1">self.last_wheels </span><span class="s3">and </span><span class="s1">wheel_params == self.last_wheels:</span>
+            <span class="s3">return</span>
+        <span class="s1">self.last_wheels = wheel_params</span>
+        <span class="s1">self.vector.motors.set_wheel_motors(*wheel_params)</span>
+
+
+<span class="s3">def </span><span class="s1">get_anim_sel_drop_down(selectorIndex):</span>
+    <span class="s1">html_text = </span><span class="s4">&quot;&quot;&quot;&lt;select onchange=&quot;handleDropDownSelect(this)&quot; name=&quot;animSelector&quot;&quot;&quot; </span><span class="s1">+ str(selectorIndex) + </span><span class="s4">&quot;&quot;&quot;&quot;&gt;&quot;&quot;&quot;</span>
+    <span class="s1">i = </span><span class="s5">0</span>
+    <span class="s3">for </span><span class="s1">anim_name </span><span class="s3">in </span><span class="s1">flask_app.remote_control_vector.anim_names:</span>
+        <span class="s1">is_selected_item = (i == flask_app.remote_control_vector.anim_index_for_key[selectorIndex])</span>
+        <span class="s1">selected_text = </span><span class="s4">''' selected=&quot;selected&quot;''' </span><span class="s3">if </span><span class="s1">is_selected_item </span><span class="s3">else </span><span class="s4">&quot;&quot;</span>
+        <span class="s1">html_text += </span><span class="s4">&quot;&quot;&quot;&lt;option value=&quot;&quot;&quot; </span><span class="s1">+ str(i) + selected_text + </span><span class="s4">&quot;&quot;&quot;&gt;&quot;&quot;&quot; </span><span class="s1">+ anim_name + </span><span class="s4">&quot;&quot;&quot;&lt;/option&gt;&quot;&quot;&quot;</span>
+        <span class="s1">i += </span><span class="s5">1</span>
+    <span class="s1">html_text += </span><span class="s4">&quot;&quot;&quot;&lt;/select&gt;&quot;&quot;&quot;</span>
+    <span class="s3">return </span><span class="s1">html_text</span>
+
+
+<span class="s3">def </span><span class="s1">get_anim_sel_drop_downs():</span>
+    <span class="s1">html_text = </span><span class="s4">&quot;&quot;</span>
+    <span class="s3">for </span><span class="s1">i </span><span class="s3">in </span><span class="s1">range(</span><span class="s5">10</span><span class="s1">):</span>
+        <span class="s0"># list keys 1..9,0 as that's the layout on the keyboard</span>
+        <span class="s1">key = i + </span><span class="s5">1 </span><span class="s3">if </span><span class="s1">(i &lt; </span><span class="s5">9</span><span class="s1">) </span><span class="s3">else </span><span class="s5">0</span>
+        <span class="s1">html_text += str(key) + </span><span class="s4">&quot;&quot;&quot;: &quot;&quot;&quot; </span><span class="s1">+ get_anim_sel_drop_down(key) + </span><span class="s4">&quot;&quot;&quot;&lt;br&gt;&quot;&quot;&quot;</span>
+    <span class="s3">return </span><span class="s1">html_text</span>
+
+<span class="s3">def </span><span class="s1">get_anim_trigger_sel_drop_down():</span>
+    <span class="s1">html_text = </span><span class="s4">&quot;x: &quot; </span><span class="s0"># Add keyboard selector</span>
+    <span class="s1">html_text += </span><span class="s4">&quot;&quot;&quot;&lt;select onchange=&quot;handleAnimTriggerDropDownSelect(this)&quot; name=&quot;animTriggerSelector&quot;&gt;&quot;&quot;&quot;</span>
+    <span class="s3">for </span><span class="s1">anim_trigger_name </span><span class="s3">in </span><span class="s1">flask_app.remote_control_vector.anim_trigger_names:</span>
+        <span class="s1">html_text += </span><span class="s4">&quot;&quot;&quot;&lt;option value=&quot;&quot;&quot; </span><span class="s1">+ anim_trigger_name + </span><span class="s4">&quot;&quot;&quot;&gt;&quot;&quot;&quot; </span><span class="s1">+ anim_trigger_name + </span><span class="s4">&quot;&quot;&quot;&lt;/option&gt;&quot;&quot;&quot;</span>
+    <span class="s1">html_text += </span><span class="s4">&quot;&quot;&quot;&lt;/select&gt;&quot;&quot;&quot;</span>
+    <span class="s3">return </span><span class="s1">html_text</span>
+
+<span class="s3">def </span><span class="s1">to_js_bool_string(bool_value):</span>
+    <span class="s3">return </span><span class="s4">&quot;true&quot; </span><span class="s3">if </span><span class="s1">bool_value </span><span class="s3">else </span><span class="s4">&quot;false&quot;</span>
+
+
+<span class="s1">@flask_app.route(</span><span class="s4">&quot;/&quot;</span><span class="s1">)</span>
+<span class="s3">def </span><span class="s1">handle_index_page():</span>
+    <span class="s3">return </span><span class="s4">&quot;&quot;&quot; 
+    &lt;html&gt; 
+        &lt;head&gt; 
+            &lt;title&gt;remote_control_vector.py display&lt;/title&gt; 
+        &lt;/head&gt; 
+        &lt;body&gt; 
+            &lt;h1&gt;Remote Control Vector&lt;/h1&gt; 
+            &lt;table&gt; 
+                &lt;tr&gt; 
+                    &lt;td valign = top&gt; 
+                        &lt;div id=&quot;vectorImageMicrosoftWarning&quot; style=&quot;display: none;color: #ff9900; text-align: center;&quot;&gt;Video feed performance is better in Chrome or Firefox due to mjpeg limitations in this browser&lt;/div&gt; 
+                        &lt;img src=&quot;vectorImage&quot; id=&quot;vectorImageId&quot; width=640 height=480&gt; 
+                        &lt;div id=&quot;DebugInfoId&quot;&gt;&lt;/div&gt; 
+                    &lt;/td&gt; 
+                    &lt;td width=30&gt;&lt;/td&gt; 
+                    &lt;td valign=top&gt; 
+                        &lt;h2&gt;Controls:&lt;/h2&gt; 
+ 
+                        &lt;h3&gt;Driving:&lt;/h3&gt; 
+ 
+                        &lt;b&gt;W A S D&lt;/b&gt; : Drive Forwards / Left / Back / Right&lt;br&gt;&lt;br&gt; 
+                        &lt;b&gt;Q&lt;/b&gt; : Toggle Mouse Look: &lt;button id=&quot;mouseLookId&quot; onClick=onMouseLookButtonClicked(this) style=&quot;font-size: 14px&quot;&gt;Default&lt;/button&gt;&lt;br&gt; 
+                        &lt;b&gt;Mouse&lt;/b&gt; : Move in browser window to aim&lt;br&gt; 
+                        (steer and head angle)&lt;br&gt; 
+                        (similar to an FPS game)&lt;br&gt; 
+ 
+                        &lt;h3&gt;Head:&lt;/h3&gt; 
+                        &lt;b&gt;T&lt;/b&gt; : Move Head Up&lt;br&gt; 
+                        &lt;b&gt;G&lt;/b&gt; : Move Head Down&lt;br&gt; 
+ 
+                        &lt;h3&gt;Lift:&lt;/h3&gt; 
+                        &lt;b&gt;R&lt;/b&gt; : Move Lift Up&lt;br&gt; 
+                        &lt;b&gt;F&lt;/b&gt;: Move Lift Down&lt;br&gt; 
+                        &lt;h3&gt;General:&lt;/h3&gt; 
+                        &lt;b&gt;Shift&lt;/b&gt; : Hold to Move Faster (Driving, Head and Lift)&lt;br&gt; 
+                        &lt;b&gt;Alt&lt;/b&gt; : Hold to Move Slower (Driving, Head and Lift)&lt;br&gt; 
+                        &lt;b&gt;P&lt;/b&gt; : Toggle Free Play mode: &lt;button id=&quot;freeplayId&quot; onClick=onFreeplayButtonClicked(this) style=&quot;font-size: 14px&quot;&gt;Default&lt;/button&gt;&lt;br&gt; 
+                        &lt;b&gt;O&lt;/b&gt; : Toggle Debug Annotations: &lt;button id=&quot;debugAnnotationsId&quot; onClick=onDebugAnnotationsButtonClicked(this) style=&quot;font-size: 14px&quot;&gt;Default&lt;/button&gt;&lt;br&gt; 
+                        &lt;h3&gt;Play Animations&lt;/h3&gt; 
+                        &lt;b&gt;0 .. 9&lt;/b&gt; : Play Animation mapped to that key&lt;br&gt; 
+                        &lt;h3&gt;Talk&lt;/h3&gt; 
+                        &lt;b&gt;Space&lt;/b&gt; : Say &lt;input type=&quot;text&quot; name=&quot;sayText&quot; id=&quot;sayTextId&quot; value=</span><span class="s3">\&quot;</span><span class="s4">&quot;&quot;&quot; </span><span class="s1">+ flask_app.remote_control_vector.text_to_say + </span><span class="s4">&quot;&quot;&quot;</span><span class="s3">\&quot; </span><span class="s4">onchange=handleTextInput(this)&gt; 
+                    &lt;/td&gt; 
+                    &lt;td width=30&gt;&lt;/td&gt; 
+                    &lt;td valign=top&gt; 
+                    &lt;h2&gt;Animation key mappings:&lt;/h2&gt; 
+                    &quot;&quot;&quot; </span><span class="s1">+ get_anim_sel_drop_downs() + </span><span class="s4">&quot;&quot;&quot;&lt;br&gt; 
+                    &lt;h2&gt;Animation Triggers:&lt;/h2&gt; 
+                    &quot;&quot;&quot; </span><span class="s1">+ get_anim_trigger_sel_drop_down() + </span><span class="s4">&quot;&quot;&quot;&lt;br&gt;&lt;br&gt; 
+                    &lt;/td&gt; 
+                &lt;/tr&gt; 
+            &lt;/table&gt; 
+ 
+            &lt;script type=&quot;text/javascript&quot;&gt; 
+                var gLastClientX = -1 
+                var gLastClientY = -1 
+                var gIsMouseLookEnabled = &quot;&quot;&quot; </span><span class="s1">+ to_js_bool_string(_is_mouse_look_enabled_by_default) + </span><span class="s4">&quot;&quot;&quot; 
+                var gAreDebugAnnotationsEnabled = &quot;&quot;&quot;</span><span class="s1">+ str(flask_app.display_debug_annotations) + </span><span class="s4">&quot;&quot;&quot; 
+                var gIsFreeplayEnabled = false 
+                var gUserAgent = window.navigator.userAgent; 
+                var gIsMicrosoftBrowser = gUserAgent.indexOf('MSIE ') &gt; 0 || gUserAgent.indexOf('Trident/') &gt; 0 || gUserAgent.indexOf('Edge/') &gt; 0; 
+                var gSkipFrame = false; 
+ 
+                if (gIsMicrosoftBrowser) { 
+                    document.getElementById(&quot;vectorImageMicrosoftWarning&quot;).style.display = &quot;block&quot;; 
+                } 
+ 
+                function postHttpRequest(url, dataSet) 
+                { 
+                    var xhr = new XMLHttpRequest(); 
+                    xhr.open(&quot;POST&quot;, url, true); 
+                    xhr.send( JSON.stringify( dataSet ) ); 
+                } 
+ 
+                function updateVector() 
+                { 
+                    console.log(&quot;Updating log&quot;) 
+                    if (gIsMicrosoftBrowser &amp;&amp; !gSkipFrame) { 
+                        // IE doesn't support MJPEG, so we need to ping the server for more images. 
+                        // Though, if this happens too frequently, the controls will be unresponsive. 
+                        gSkipFrame = true; 
+                        document.getElementById(&quot;vectorImageId&quot;).src=&quot;vectorImage?&quot; + (new Date()).getTime(); 
+                    } else if (gSkipFrame) { 
+                        gSkipFrame = false; 
+                    } 
+                    var xhr = new XMLHttpRequest(); 
+                    xhr.onreadystatechange = function() { 
+                        if (xhr.readyState == XMLHttpRequest.DONE) { 
+                            document.getElementById(&quot;DebugInfoId&quot;).innerHTML = xhr.responseText 
+                        } 
+                    } 
+ 
+                    xhr.open(&quot;POST&quot;, &quot;updateVector&quot;, true); 
+                    xhr.send( null ); 
+                } 
+                setInterval(updateVector , 60); 
+ 
+                function updateButtonEnabledText(button, isEnabled) 
+                { 
+                    button.firstChild.data = isEnabled ? &quot;Enabled&quot; : &quot;Disabled&quot;; 
+                } 
+ 
+                function onMouseLookButtonClicked(button) 
+                { 
+                    gIsMouseLookEnabled = !gIsMouseLookEnabled; 
+                    updateButtonEnabledText(button, gIsMouseLookEnabled); 
+                    isMouseLookEnabled = gIsMouseLookEnabled 
+                    postHttpRequest(&quot;setMouseLookEnabled&quot;, {isMouseLookEnabled}) 
+                } 
+ 
+                function updateDebugAnnotationButtonEnabledText(button, isEnabled) 
+                { 
+                    switch(gAreDebugAnnotationsEnabled) 
+                    { 
+                    case 0: 
+                        button.firstChild.data = &quot;Disabled&quot;; 
+                        break; 
+                    case 1: 
+                        button.firstChild.data = &quot;Enabled (vision)&quot;; 
+                        break; 
+                    case 2: 
+                        button.firstChild.data = &quot;Enabled (all)&quot;; 
+                        break; 
+                    default: 
+                        button.firstChild.data = &quot;ERROR&quot;; 
+                        break; 
+                    } 
+                } 
+ 
+                function onDebugAnnotationsButtonClicked(button) 
+                { 
+                    gAreDebugAnnotationsEnabled += 1; 
+                    if (gAreDebugAnnotationsEnabled &gt; 2) 
+                    { 
+                        gAreDebugAnnotationsEnabled = 0 
+                    } 
+                    updateDebugAnnotationButtonEnabledText(button, gAreDebugAnnotationsEnabled) 
+                    areDebugAnnotationsEnabled = gAreDebugAnnotationsEnabled 
+                    postHttpRequest(&quot;setAreDebugAnnotationsEnabled&quot;, {areDebugAnnotationsEnabled}) 
+                } 
+ 
+                function onFreeplayButtonClicked(button) 
+                { 
+                    gIsFreeplayEnabled = !gIsFreeplayEnabled; 
+                    updateButtonEnabledText(button, gIsFreeplayEnabled); 
+                    isFreeplayEnabled = gIsFreeplayEnabled 
+                    postHttpRequest(&quot;setFreeplayEnabled&quot;, {isFreeplayEnabled}) 
+                } 
+ 
+                updateButtonEnabledText(document.getElementById(&quot;mouseLookId&quot;), gIsMouseLookEnabled); 
+                updateButtonEnabledText(document.getElementById(&quot;freeplayId&quot;), gIsFreeplayEnabled); 
+                updateDebugAnnotationButtonEnabledText(document.getElementById(&quot;debugAnnotationsId&quot;), gAreDebugAnnotationsEnabled); 
+ 
+                function handleDropDownSelect(selectObject) 
+                { 
+                    selectedIndex = selectObject.selectedIndex 
+                    itemName = selectObject.name 
+                    postHttpRequest(&quot;dropDownSelect&quot;, {selectedIndex, itemName}); 
+                } 
+ 
+                function handleAnimTriggerDropDownSelect(selectObject) 
+                { 
+                    animTriggerName = selectObject.value 
+                    postHttpRequest(&quot;animTriggerDropDownSelect&quot;, {animTriggerName}); 
+                } 
+ 
+                function handleKeyActivity (e, actionType) 
+                { 
+                    var keyCode  = (e.keyCode ? e.keyCode : e.which); 
+                    var hasShift = (e.shiftKey ? 1 : 0) 
+                    var hasCtrl  = (e.ctrlKey  ? 1 : 0) 
+                    var hasAlt   = (e.altKey   ? 1 : 0) 
+ 
+                    if (actionType==&quot;keyup&quot;) 
+                    { 
+                        if (keyCode == 79) // 'O' 
+                        { 
+                            // Simulate a click of the debug annotations button 
+                            onDebugAnnotationsButtonClicked(document.getElementById(&quot;debugAnnotationsId&quot;)) 
+                        } 
+                        else if (keyCode == 80) // 'P' 
+                        { 
+                            // Simulate a click of the freeplay button 
+                            onFreeplayButtonClicked(document.getElementById(&quot;freeplayId&quot;)) 
+                        } 
+                        else if (keyCode == 81) // 'Q' 
+                        { 
+                            // Simulate a click of the mouse look button 
+                            onMouseLookButtonClicked(document.getElementById(&quot;mouseLookId&quot;)) 
+                        } 
+                    } 
+ 
+                    postHttpRequest(actionType, {keyCode, hasShift, hasCtrl, hasAlt}) 
+                } 
+ 
+                function handleMouseActivity (e, actionType) 
+                { 
+                    var clientX = e.clientX / document.body.clientWidth  // 0..1 (left..right) 
+                    var clientY = e.clientY / document.body.clientHeight // 0..1 (top..bottom) 
+                    var isButtonDown = e.which &amp;&amp; (e.which != 0) ? 1 : 0 
+                    var deltaX = (gLastClientX &gt;= 0) ? (clientX - gLastClientX) : 0.0 
+                    var deltaY = (gLastClientY &gt;= 0) ? (clientY - gLastClientY) : 0.0 
+                    gLastClientX = clientX 
+                    gLastClientY = clientY 
+ 
+                    postHttpRequest(actionType, {clientX, clientY, isButtonDown, deltaX, deltaY}) 
+                } 
+ 
+                function handleTextInput(textField) 
+                { 
+                    textEntered = textField.value 
+                    postHttpRequest(&quot;sayText&quot;, {textEntered}) 
+                } 
+ 
+                document.addEventListener(&quot;keydown&quot;, function(e) { handleKeyActivity(e, &quot;keydown&quot;) } ); 
+                document.addEventListener(&quot;keyup&quot;,   function(e) { handleKeyActivity(e, &quot;keyup&quot;) } ); 
+ 
+                document.addEventListener(&quot;mousemove&quot;,   function(e) { handleMouseActivity(e, &quot;mousemove&quot;) } ); 
+ 
+                function stopEventPropagation(event) 
+                { 
+                    if (event.stopPropagation) 
+                    { 
+                        event.stopPropagation(); 
+                    } 
+                    else 
+                    { 
+                        event.cancelBubble = true 
+                    } 
+                } 
+ 
+                document.getElementById(&quot;sayTextId&quot;).addEventListener(&quot;keydown&quot;, function(event) { 
+                    stopEventPropagation(event); 
+                } ); 
+                document.getElementById(&quot;sayTextId&quot;).addEventListener(&quot;keyup&quot;, function(event) { 
+                    stopEventPropagation(event); 
+                } ); 
+            &lt;/script&gt; 
+ 
+        &lt;/body&gt; 
+    &lt;/html&gt; 
+    &quot;&quot;&quot;</span>
+
+
+<span class="s3">def </span><span class="s1">get_annotated_image():</span>
+    <span class="s1">image = flask_app.remote_control_vector.vector.camera.latest_image</span>
+    <span class="s3">if </span><span class="s1">flask_app.display_debug_annotations != DebugAnnotations.DISABLED.value:</span>
+        <span class="s3">return </span><span class="s1">image.annotate_image()</span>
+    <span class="s3">return </span><span class="s1">image.raw_image</span>
+
+
+<span class="s3">def </span><span class="s1">streaming_video():</span>
+    <span class="s2">&quot;&quot;&quot;Video streaming generator function&quot;&quot;&quot;</span>
+    <span class="s3">while True</span><span class="s1">:</span>
+        <span class="s3">if </span><span class="s1">flask_app.remote_control_vector:</span>
+            <span class="s1">image = get_annotated_image()</span>
+
+            <span class="s1">img_io = io.BytesIO()</span>
+            <span class="s1">image.save(img_io</span><span class="s3">, </span><span class="s4">'PNG'</span><span class="s1">)</span>
+            <span class="s1">img_io.seek(</span><span class="s5">0</span><span class="s1">)</span>
+            <span class="s3">yield </span><span class="s1">(</span><span class="s6">b'--frame</span><span class="s3">\r\n</span><span class="s6">'</span>
+                   <span class="s6">b'Content-Type: image/png</span><span class="s3">\r\n\r\n</span><span class="s6">' </span><span class="s1">+ img_io.getvalue() + </span><span class="s6">b'</span><span class="s3">\r\n</span><span class="s6">'</span><span class="s1">)</span>
+        <span class="s3">else</span><span class="s1">:</span>
+            <span class="s1">time.sleep(</span><span class="s5">.1</span><span class="s1">)</span>
+
+
+<span class="s3">def </span><span class="s1">serve_single_image():</span>
+    <span class="s3">if </span><span class="s1">flask_app.remote_control_vector:</span>
+        <span class="s1">image = get_annotated_image()</span>
+        <span class="s3">if </span><span class="s1">image:</span>
+            <span class="s3">return </span><span class="s1">flask_helpers.serve_pil_image(image)</span>
+
+    <span class="s3">return </span><span class="s1">flask_helpers.serve_pil_image(_default_camera_image)</span>
+
+
+<span class="s3">def </span><span class="s1">is_microsoft_browser(req):</span>
+    <span class="s1">agent = req.user_agent.string</span>
+    <span class="s3">return </span><span class="s4">'Edge/' </span><span class="s3">in </span><span class="s1">agent </span><span class="s3">or </span><span class="s4">'MSIE ' </span><span class="s3">in </span><span class="s1">agent </span><span class="s3">or </span><span class="s4">'Trident/' </span><span class="s3">in </span><span class="s1">agent</span>
+
+
+<span class="s1">@flask_app.route(</span><span class="s4">&quot;/vectorImage&quot;</span><span class="s1">)</span>
+<span class="s3">def </span><span class="s1">handle_vectorImage():</span>
+    <span class="s3">if </span><span class="s1">is_microsoft_browser(request):</span>
+        <span class="s3">return </span><span class="s1">serve_single_image()</span>
+    <span class="s3">return </span><span class="s1">flask_helpers.stream_video(streaming_video)</span>
+
+
+<span class="s3">def </span><span class="s1">handle_key_event(key_request</span><span class="s3">, </span><span class="s1">is_key_down):</span>
+    <span class="s1">message = json.loads(key_request.data.decode(</span><span class="s4">&quot;utf-8&quot;</span><span class="s1">))</span>
+    <span class="s3">if </span><span class="s1">flask_app.remote_control_vector:</span>
+        <span class="s1">flask_app.remote_control_vector.handle_key(key_code=(message[</span><span class="s4">'keyCode'</span><span class="s1">])</span><span class="s3">, </span><span class="s1">is_shift_down=message[</span><span class="s4">'hasShift'</span><span class="s1">]</span><span class="s3">,</span>
+                                                   <span class="s1">is_alt_down=message[</span><span class="s4">'hasAlt'</span><span class="s1">]</span><span class="s3">, </span><span class="s1">is_key_down=is_key_down)</span>
+    <span class="s3">return </span><span class="s4">&quot;&quot;</span>
+
+
+<span class="s1">@flask_app.route(</span><span class="s4">'/mousemove'</span><span class="s3">, </span><span class="s1">methods=[</span><span class="s4">'POST'</span><span class="s1">])</span>
+<span class="s3">def </span><span class="s1">handle_mousemove():</span>
+    <span class="s2">&quot;&quot;&quot;Called from Javascript whenever mouse moves&quot;&quot;&quot;</span>
+    <span class="s1">message = json.loads(request.data.decode(</span><span class="s4">&quot;utf-8&quot;</span><span class="s1">))</span>
+    <span class="s3">if </span><span class="s1">flask_app.remote_control_vector:</span>
+        <span class="s1">flask_app.remote_control_vector.handle_mouse(mouse_x=(message[</span><span class="s4">'clientX'</span><span class="s1">])</span><span class="s3">, </span><span class="s1">mouse_y=message[</span><span class="s4">'clientY'</span><span class="s1">])</span>
+    <span class="s3">return </span><span class="s4">&quot;&quot;</span>
+
+
+<span class="s1">@flask_app.route(</span><span class="s4">'/setMouseLookEnabled'</span><span class="s3">, </span><span class="s1">methods=[</span><span class="s4">'POST'</span><span class="s1">])</span>
+<span class="s3">def </span><span class="s1">handle_setMouseLookEnabled():</span>
+    <span class="s2">&quot;&quot;&quot;Called from Javascript whenever mouse-look mode is toggled&quot;&quot;&quot;</span>
+    <span class="s1">message = json.loads(request.data.decode(</span><span class="s4">&quot;utf-8&quot;</span><span class="s1">))</span>
+    <span class="s3">if </span><span class="s1">flask_app.remote_control_vector:</span>
+        <span class="s1">flask_app.remote_control_vector.set_mouse_look_enabled(is_mouse_look_enabled=message[</span><span class="s4">'isMouseLookEnabled'</span><span class="s1">])</span>
+    <span class="s3">return </span><span class="s4">&quot;&quot;</span>
+
+
+<span class="s1">@flask_app.route(</span><span class="s4">'/setAreDebugAnnotationsEnabled'</span><span class="s3">, </span><span class="s1">methods=[</span><span class="s4">'POST'</span><span class="s1">])</span>
+<span class="s3">def </span><span class="s1">handle_setAreDebugAnnotationsEnabled():</span>
+    <span class="s2">&quot;&quot;&quot;Called from Javascript whenever debug-annotations mode is toggled&quot;&quot;&quot;</span>
+    <span class="s1">message = json.loads(request.data.decode(</span><span class="s4">&quot;utf-8&quot;</span><span class="s1">))</span>
+    <span class="s1">flask_app.display_debug_annotations = message[</span><span class="s4">'areDebugAnnotationsEnabled'</span><span class="s1">]</span>
+    <span class="s3">if </span><span class="s1">flask_app.remote_control_vector:</span>
+        <span class="s3">if </span><span class="s1">flask_app.display_debug_annotations == DebugAnnotations.ENABLED_ALL.value:</span>
+            <span class="s1">flask_app.remote_control_vector.vector.camera.image_annotator.enable_annotator(</span><span class="s4">'robotState'</span><span class="s1">)</span>
+        <span class="s3">else</span><span class="s1">:</span>
+            <span class="s1">flask_app.remote_control_vector.vector.camera.image_annotator.disable_annotator(</span><span class="s4">'robotState'</span><span class="s1">)</span>
+    <span class="s3">return </span><span class="s4">&quot;&quot;</span>
+
+
+<span class="s1">@flask_app.route(</span><span class="s4">'/setFreeplayEnabled'</span><span class="s3">, </span><span class="s1">methods=[</span><span class="s4">'POST'</span><span class="s1">])</span>
+<span class="s3">def </span><span class="s1">handle_setFreeplayEnabled():</span>
+    <span class="s2">&quot;&quot;&quot;Called from Javascript whenever freeplay mode is toggled on/off&quot;&quot;&quot;</span>
+    <span class="s1">message = json.loads(request.data.decode(</span><span class="s4">&quot;utf-8&quot;</span><span class="s1">))</span>
+    <span class="s1">isFreeplayEnabled = message[</span><span class="s4">'isFreeplayEnabled'</span><span class="s1">]</span>
+    <span class="s3">if </span><span class="s1">flask_app.remote_control_vector:</span>
+        <span class="s1">connection = flask_app.remote_control_vector.vector.conn</span>
+        <span class="s3">if </span><span class="s1">isFreeplayEnabled:</span>
+            <span class="s1">connection.release_control()</span>
+        <span class="s3">else</span><span class="s1">:</span>
+            <span class="s1">connection.request_control()</span>
+    <span class="s3">return </span><span class="s4">&quot;&quot;</span>
+
+
+<span class="s1">@flask_app.route(</span><span class="s4">'/keydown'</span><span class="s3">, </span><span class="s1">methods=[</span><span class="s4">'POST'</span><span class="s1">])</span>
+<span class="s3">def </span><span class="s1">handle_keydown():</span>
+    <span class="s2">&quot;&quot;&quot;Called from Javascript whenever a key is down (note: can generate repeat calls if held down)&quot;&quot;&quot;</span>
+    <span class="s3">return </span><span class="s1">handle_key_event(request</span><span class="s3">, </span><span class="s1">is_key_down=</span><span class="s3">True</span><span class="s1">)</span>
+
+
+<span class="s1">@flask_app.route(</span><span class="s4">'/keyup'</span><span class="s3">, </span><span class="s1">methods=[</span><span class="s4">'POST'</span><span class="s1">])</span>
+<span class="s3">def </span><span class="s1">handle_keyup():</span>
+    <span class="s2">&quot;&quot;&quot;Called from Javascript whenever a key is released&quot;&quot;&quot;</span>
+    <span class="s3">return </span><span class="s1">handle_key_event(request</span><span class="s3">, </span><span class="s1">is_key_down=</span><span class="s3">False</span><span class="s1">)</span>
+
+
+<span class="s1">@flask_app.route(</span><span class="s4">'/dropDownSelect'</span><span class="s3">, </span><span class="s1">methods=[</span><span class="s4">'POST'</span><span class="s1">])</span>
+<span class="s3">def </span><span class="s1">handle_dropDownSelect():</span>
+    <span class="s2">&quot;&quot;&quot;Called from Javascript whenever an animSelector dropdown menu is selected (i.e. modified)&quot;&quot;&quot;</span>
+    <span class="s1">message = json.loads(request.data.decode(</span><span class="s4">&quot;utf-8&quot;</span><span class="s1">))</span>
+
+    <span class="s1">item_name_prefix = </span><span class="s4">&quot;animSelector&quot;</span>
+    <span class="s1">item_name = message[</span><span class="s4">'itemName'</span><span class="s1">]</span>
+
+    <span class="s3">if </span><span class="s1">flask_app.remote_control_vector </span><span class="s3">and </span><span class="s1">item_name.startswith(item_name_prefix):</span>
+        <span class="s1">item_name_index = int(item_name[len(item_name_prefix):])</span>
+        <span class="s1">flask_app.remote_control_vector.set_anim(item_name_index</span><span class="s3">, </span><span class="s1">message[</span><span class="s4">'selectedIndex'</span><span class="s1">])</span>
+
+    <span class="s3">return </span><span class="s4">&quot;&quot;</span>
+
+<span class="s1">@flask_app.route(</span><span class="s4">'/animTriggerDropDownSelect'</span><span class="s3">, </span><span class="s1">methods=[</span><span class="s4">'POST'</span><span class="s1">])</span>
+<span class="s3">def </span><span class="s1">handle_animTriggerDropDownSelect():</span>
+    <span class="s2">&quot;&quot;&quot;Called from Javascript whenever the animTriggerSelector dropdown menu is selected (i.e. modified)&quot;&quot;&quot;</span>
+    <span class="s1">message = json.loads(request.data.decode(</span><span class="s4">&quot;utf-8&quot;</span><span class="s1">))</span>
+    <span class="s1">selected_anim_trigger_name = message[</span><span class="s4">'animTriggerName'</span><span class="s1">]</span>
+    <span class="s1">flask_app.remote_control_vector.selected_anim_trigger_name = selected_anim_trigger_name</span>
+    <span class="s3">return </span><span class="s4">&quot;&quot;</span>
+
+<span class="s1">@flask_app.route(</span><span class="s4">'/sayText'</span><span class="s3">, </span><span class="s1">methods=[</span><span class="s4">'POST'</span><span class="s1">])</span>
+<span class="s3">def </span><span class="s1">handle_sayText():</span>
+    <span class="s2">&quot;&quot;&quot;Called from Javascript whenever the saytext text field is modified&quot;&quot;&quot;</span>
+    <span class="s1">message = json.loads(request.data.decode(</span><span class="s4">&quot;utf-8&quot;</span><span class="s1">))</span>
+    <span class="s3">if </span><span class="s1">flask_app.remote_control_vector:</span>
+        <span class="s1">flask_app.remote_control_vector.text_to_say = message[</span><span class="s4">'textEntered'</span><span class="s1">]</span>
+    <span class="s3">return </span><span class="s4">&quot;&quot;</span>
+
+
+<span class="s1">@flask_app.route(</span><span class="s4">'/updateVector'</span><span class="s3">, </span><span class="s1">methods=[</span><span class="s4">'POST'</span><span class="s1">])</span>
+<span class="s3">def </span><span class="s1">handle_updateVector():</span>
+    <span class="s3">if </span><span class="s1">flask_app.remote_control_vector:</span>
+        <span class="s1">flask_app.remote_control_vector.update()</span>
+        <span class="s1">action_queue_text = </span><span class="s4">&quot;&quot;</span>
+        <span class="s1">i = </span><span class="s5">1</span>
+        <span class="s3">for </span><span class="s1">action </span><span class="s3">in </span><span class="s1">flask_app.remote_control_vector.action_queue:</span>
+            <span class="s1">action_queue_text += str(i) + </span><span class="s4">&quot;: &quot; </span><span class="s1">+ flask_app.remote_control_vector.action_to_text(action) + </span><span class="s4">&quot;&lt;br&gt;&quot;</span>
+            <span class="s1">i += </span><span class="s5">1</span>
+
+        <span class="s3">return </span><span class="s4">&quot;Action Queue:&lt;br&gt;&quot; </span><span class="s1">+ action_queue_text + </span><span class="s4">&quot;</span><span class="s3">\n</span><span class="s4">&quot;</span>
+    <span class="s3">return </span><span class="s4">&quot;&quot;</span>
+
+<span class="s3">def </span><span class="s1">run():</span>
+    <span class="s1">args = util.parse_command_args()</span>
+
+    <span class="s3">with </span><span class="s1">anki_vector.AsyncRobot(args.serial</span><span class="s3">, </span><span class="s1">enable_face_detection=</span><span class="s3">True, </span><span class="s1">enable_custom_object_detection=</span><span class="s3">True</span><span class="s1">) </span><span class="s3">as </span><span class="s1">robot:</span>
+        <span class="s1">flask_app.remote_control_vector = RemoteControlVector(robot)</span>
+        <span class="s1">flask_app.display_debug_annotations = DebugAnnotations.ENABLED_ALL.value</span>
+
+        <span class="s1">robot.camera.init_camera_feed()</span>
+        <span class="s1">robot.behavior.drive_off_charger()</span>
+        <span class="s1">robot.camera.image_annotator.add_annotator(</span><span class="s4">'robotState'</span><span class="s3">, </span><span class="s1">RobotStateDisplay)</span>
+
+        <span class="s1">flask_helpers.run_flask(flask_app)</span>
+
+
+<span class="s3">if </span><span class="s1">__name__ == </span><span class="s4">'__main__'</span><span class="s1">:</span>
+    <span class="s3">try</span><span class="s1">:</span>
+        <span class="s1">run()</span>
+    <span class="s3">except </span><span class="s1">KeyboardInterrupt </span><span class="s3">as </span><span class="s1">e:</span>
+        <span class="s3">pass</span>
+    <span class="s3">except </span><span class="s1">anki_vector.exceptions.VectorConnectionException </span><span class="s3">as </span><span class="s1">e:</span>
+        <span class="s1">sys.exit(</span><span class="s4">&quot;A connection error occurred: %s&quot; </span><span class="s1">% e)</span>
+</pre>
+</body>
+</html>
