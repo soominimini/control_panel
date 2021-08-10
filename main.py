@@ -27,8 +27,12 @@ from enum import Enum
 from lib import flask_helpers
 
 import anki_vector
+from anki_vector import behavior
 from anki_vector import util
+from anki_vector.util import *
+from anki_vector.behavior import *
 from anki_vector import annotate
+
 
 try:
     from flask import Flask, request
@@ -40,6 +44,26 @@ try:
 except ImportError:
     sys.exit("Cannot import from PIL: Do `pip3 install --user Pillow` to install")
 
+# My_func
+def first_process(self):
+    self.vector.behavior.say_text("hi! i am vector")
+    self.vector.anim.play_animation_trigger('GreetAfterLongTime')
+    time.sleep(1)
+    self.vector.behavior.say_text("nice to meet you!")
+
+def second_process(self):
+    self.vector.behavior.say_text("of course! i will try!")
+    # reply and then change angle, move toward the square
+    #Positive values turn to the left, negative values to the right.
+    self.vector.behavior.turn_in_place(degrees(90)) #or this can be placed with remote control
+    time.sleep(1)
+    self.vector.behavior.drive_straight(distance_mm(200), speed_mmps(100))
+
+def third_process(self):
+    self.vector.behavior.turn_in_place(degrees(-90))  # or this can be placed with remote control
+    self.vector.behavior.set_head_angle(MAX_HEAD_ANGLE)
+    self.vector.anim.play_animation('anim_eyepose_sad_instronspect')
+    self.vector.behavior.say_text("it seems scary..")
 
 def create_default_image(image_width, image_height, do_gradient=False):
     """Create a place-holder PIL image to use until we have a live feed from Vector"""
@@ -291,18 +315,6 @@ class RemoteControlVector:
                 self.queue_action((self.vector.anim.play_animation_trigger, self.selected_anim_trigger_name))
 
 
-    def first_process(self, key_num):
-        self.vector.behavior.say_text("hi! i am vector")
-        self.vector.anim.play_animation_trigger('GreetAfterLongTime')
-        time.sleep(1)
-        self.vector.behavior.say_text("nice to meet you!")
-
-    def second_process(self,key_num):
-        self.vector.behavior.say_text("okay! i will try!")
-    def third_process(self,key_num):
-        self.vector.anim.play_animation('anim_eyepose_sad_instronspect')
-        self.vector.behavior.say_text("it seems scary..")
-
     def key_code_to_anim_name(self, key_code):
         key_num = key_code - ord('0')
         anim_num = self.anim_index_for_key[key_num]
@@ -310,11 +322,11 @@ class RemoteControlVector:
 
 
         if key_num==0:
-            self.first_process(self)
+            first_process(self)
         elif key_num==1:
-            self.second_process(self)
+            second_process(self)
         elif key_num==2:
-            self.third_process(self)
+            third_process(self)
         return ''
 
     def func_to_name(self, func):
