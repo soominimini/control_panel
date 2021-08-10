@@ -45,19 +45,32 @@ except ImportError:
     sys.exit("Cannot import from PIL: Do `pip3 install --user Pillow` to install")
 
 # My_func
+def move_forward(self):
+    self.vector.behavior.drive_straight(distance_mm(200), speed_mmps(100))
+    return ''
+
+def turn_right(self):
+    self.vector.behavior.turn_in_place(degrees(-90))  # or this can be placed with remote control
+    return ''
+
+def turn_left(self):
+    self.vector.behavior.turn_in_place(degrees(90))  # or this can be placed with remote control
+    return ''
+def say(self, str):
+    self.vector.behavior.say_text( str)
+
 def first_process(self):
     self.vector.behavior.say_text("hi! i am vector")
     self.vector.anim.play_animation_trigger('GreetAfterLongTime')
-    time.sleep(1)
-    self.vector.behavior.say_text("nice to meet you!")
+    #이게 바로 안먹음
+    say(self, "nice to meet you!")
 
 def second_process(self):
     self.vector.behavior.say_text("of course! i will try!")
     # reply and then change angle, move toward the square
     #Positive values turn to the left, negative values to the right.
     self.vector.behavior.turn_in_place(degrees(90)) #or this can be placed with remote control
-    time.sleep(1)
-    self.vector.behavior.drive_straight(distance_mm(200), speed_mmps(100))
+    move_forward(self)
 
 def third_process(self):
     self.vector.behavior.turn_in_place(degrees(-90))  # or this can be placed with remote control
