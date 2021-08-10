@@ -290,13 +290,31 @@ class RemoteControlVector:
             elif key_code == ord('X'):
                 self.queue_action((self.vector.anim.play_animation_trigger, self.selected_anim_trigger_name))
 
+
+    def first_process(self, key_num):
+        self.vector.behavior.say_text("hi! i am vector")
+        self.vector.anim.play_animation_trigger('GreetAfterLongTime')
+        time.sleep(1)
+        self.vector.behavior.say_text("nice to meet you!")
+
+    def second_process(self,key_num):
+        self.vector.behavior.say_text("okay! i will try!")
+    def third_process(self,key_num):
+        self.vector.anim.play_animation('anim_eyepose_sad_instronspect')
+        self.vector.behavior.say_text("it seems scary..")
+
     def key_code_to_anim_name(self, key_code):
         key_num = key_code - ord('0')
         anim_num = self.anim_index_for_key[key_num]
         anim_name = self.anim_names[anim_num]
 
+
         if key_num==0:
-            self.vector.behavior.say_text("hi! i am vector")
+            self.first_process(self)
+        elif key_num==1:
+            self.second_process(self)
+        elif key_num==2:
+            self.third_process(self)
         return ''
 
     def func_to_name(self, func):
