@@ -311,13 +311,70 @@ class RemoteControlVector:
             # reply and then change angle, move toward the square
             # Positive values turn to the left, negative values to the right.
             self.vector.behavior.turn_in_place(degrees(90))  # or this can be placed with remote control
-            self.vector.behavior.drive_straight(distance_mm(200), speed_mmps(100))
+            self.vector.behavior.drive_straight(distance_mm(200), speed_mmps(100)) # arrive on the spot
 
         elif key_num == 2:
             self.vector.behavior.turn_in_place(degrees(-90))  # or this can be placed with remote control
             self.vector.behavior.set_head_angle(MAX_HEAD_ANGLE)
             self.vector.anim.play_animation('anim_eyepose_sad_instronspect')
             self.vector.behavior.say_text("it seems scary..")
+
+#응원1
+        elif key_num == 3:
+            self.vector.behavior.say_text("okay,,, i will try,,,,")
+            self.vector.behavior.set_head_angle(45) #regulate head angle
+            self.vector.behavior.turn_in_place(degrees(-90))  # or this can be placed with remote control
+            self.vector.behavior.drive_straight(distance_mm(50), speed_mmps(10))
+            self.vector.behavior.turn_in_place(degrees(180))
+            self.vector.behavior.drive_straight(distance_mm(50), speed_mmps(100))
+            self.vector.behavior.turn_in_place(degrees(-90))
+            self.vector.behavior.set_head_angle(MAX_HEAD_ANGLE)
+            self.vector.anim.play_animation('anim_eyepose_sad_instronspect')
+            self.vector.behavior.say_text("i cant' do this...")
+#응원2
+
+        elif key_num == 4:
+            self.vector.behavior.say_text("okay....")
+            self.vector.behavior.set_head_angle(MIN_HEAD_ANGLE)
+            self.vector.behavior.turn_in_place(degrees(-90))  # or this can be placed with remote control
+            self.vector.behavior.set_head_angle(MAX_HEAD_ANGLE)
+            self.vector.anim.play_animation_trigger('ReactToCliffFront')
+            #if it is necessary, modify location
+            self.vector.behavior.say_text("sorry... i can't do this...")
+# 응원3
+
+        elif key_num == 5:
+            self.vector.behavior.turn_in_place(degrees(-90))  # or this can be placed with remote control
+            self.vector.behavior.set_head_angle(MAX_HEAD_ANGLE)
+            self.vector.anim.play_animation('anim_eyepose_sad_instronspect')
+            self.vector.behavior.say_text("it seems scary..")
+
+#encounter obstacle
+
+        elif key_num == 6:
+            self.vector.behavior.set_head_angle(MAX_HEAD_ANGLE)
+            self.vector.anim.play_animation('anim_eyepose_determined') #replace to determined face
+            self.vector.behavior.say_text("Okay! I will try!")
+            self.vector.behavior.turn_in_place(degrees(-90))  # or this can be placed with remote control
+            self.vector.behavior.drive_straight(distance_mm(100), speed_mmps(50))
+            self.vector.behavior.drive_straight(distance_mm(100), speed_mmps(100))
+            #encounter
+            self.vector.anim.play_animation_trigger('ReactToCliffFront')
+            self.vector.behavior.turn_in_place(degrees(180))
+            self.vector.behavior.drive_straight(distance_mm(200), speed_mmps(300)) #run away
+            self.vector.behavior.turn_in_place(degrees(90))
+            self.vector.anim.play_animation('anim_eyepose_sad_up')
+            self.vector.behavior.say_text("i was almost dead")
+
+# 응원4?
+        elif key_num == 7:
+            self.vector.behavior.say_text("okay! i will try again!")
+            self.vector.behavior.drive_straight(distance_mm(200), speed_mmps(50))
+            self.vector.behavior.drive_straight(distance_mm(200), speed_mmps(100))
+            self.vector.behavior.turn_in_place(degrees(-90))  # toward participant
+            self.vector.behavior.set_head_angle(MAX_HEAD_ANGLE)
+            self.vector.anim.play_animation('anim_greeting_happy_03_head_angle_40')
+            self.vector.behavior.say_text("i did it!!")
 
         return ''
 
