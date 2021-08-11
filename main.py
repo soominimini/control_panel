@@ -33,7 +33,6 @@ from anki_vector.util import *
 from anki_vector.behavior import *
 from anki_vector import annotate
 
-
 try:
     from flask import Flask, request
 except ImportError:
@@ -44,39 +43,33 @@ try:
 except ImportError:
     sys.exit("Cannot import from PIL: Do `pip3 install --user Pillow` to install")
 
-# My_func
-def move_forward(self):
-    self.vector.behavior.drive_straight(distance_mm(200), speed_mmps(100))
+
+    def turn_right(self):
+        self.vector.behavior.turn_in_place(degrees(-90))  # or this can be placed with remote control
+        return ''
+
+
+    def turn_left(self):
+        self.vector.behavior.turn_in_place(degrees(90))  # or this can be placed with remote control
+        return ''
+
+
+def second():
+    with anki_vector.Robot() as robot:
+        robot.behavior.say_text("of course! i will try!")
+        robot.behavior.turn_in_place(degrees(90))
+        robot.behavior.drive_straight(distance_mm(200), speed_mmps(100))
     return ''
 
-def turn_right(self):
-    self.vector.behavior.turn_in_place(degrees(-90))  # or this can be placed with remote control
-    return ''
 
-def turn_left(self):
-    self.vector.behavior.turn_in_place(degrees(90))  # or this can be placed with remote control
-    return ''
-def say(self, str):
-    self.vector.behavior.say_text( str)
+def third():
+    with anki_vector.Robot() as robot:
+        robot.behavior.turn_in_place(degrees(-90))  # or this can be placed with remote control
+        robot.behavior.set_head_angle(MAX_HEAD_ANGLE)
+        robot.anim.play_animation('anim_eyepose_sad_instronspect')
+        robot.behavior.say_text("it seems scary..")
+    return
 
-def first_process(self):
-    self.vector.behavior.say_text("hi! i am vector")
-    self.vector.anim.play_animation_trigger('GreetAfterLongTime')
-    #이게 바로 안먹음
-    say(self, "nice to meet you!")
-
-def second_process(self):
-    self.vector.behavior.say_text("of course! i will try!")
-    # reply and then change angle, move toward the square
-    #Positive values turn to the left, negative values to the right.
-    self.vector.behavior.turn_in_place(degrees(90)) #or this can be placed with remote control
-    move_forward(self)
-
-def third_process(self):
-    self.vector.behavior.turn_in_place(degrees(-90))  # or this can be placed with remote control
-    self.vector.behavior.set_head_angle(MAX_HEAD_ANGLE)
-    self.vector.anim.play_animation('anim_eyepose_sad_instronspect')
-    self.vector.behavior.say_text("it seems scary..")
 
 def create_default_image(image_width, image_height, do_gradient=False):
     """Create a place-holder PIL image to use until we have a live feed from Vector"""
@@ -86,9 +79,9 @@ def create_default_image(image_width, image_height, do_gradient=False):
         i = 0
         for y in range(image_height):
             for x in range(image_width):
-                image_bytes[i] = int(255.0 * (x / image_width))   # R
+                image_bytes[i] = int(255.0 * (x / image_width))  # R
                 image_bytes[i + 1] = int(255.0 * (y / image_height))  # G
-                image_bytes[i + 2] = 0                                # B
+                image_bytes[i + 2] = 0  # B
                 i += 3
 
     image = Image.frombytes('RGB', (image_width, image_height), bytes(image_bytes))
@@ -124,7 +117,8 @@ class RobotStateDisplay(annotate.Annotator):
         bounds = [3, 0, image.width, image.height]
 
         def print_line(text_line):
-            text = annotate.ImageText(text_line, position=annotate.AnnotationPosition.TOP_LEFT, outline_color='black', color='lightblue')
+            text = annotate.ImageText(text_line, position=annotate.AnnotationPosition.TOP_LEFT, outline_color='black',
+                                      color='lightblue')
             text.render(d, bounds)
             TEXT_HEIGHT = 11
             bounds[1] += TEXT_HEIGHT
@@ -252,13 +246,13 @@ class RemoteControlVector:
     def update_drive_state(self, key_code, is_key_down, speed_changed):
         """Update state of driving intent from keyboard, and if anything changed then call update_driving"""
         update_driving = True
-        if key_code == ord('W'):
+        if key_code == 38:
             self.drive_forwards = is_key_down
-        elif key_code == ord('S'):
+        elif key_code == 40:
             self.drive_back = is_key_down
-        elif key_code == ord('A'):
+        elif key_code == 37:
             self.turn_left = is_key_down
-        elif key_code == ord('D'):
+        elif key_code == 39:
             self.turn_right = is_key_down
         else:
             if not speed_changed:
@@ -288,7 +282,6 @@ class RemoteControlVector:
             if not speed_changed:
                 update_head = False
         return update_head
-
     def handle_key(self, key_code, is_shift_down, is_alt_down, is_key_down):
         """Called on any key press or release
            Holding a key down may result in repeated handle_key calls with is_key_down==True
@@ -327,34 +320,32 @@ class RemoteControlVector:
             elif key_code == ord('X'):
                 self.queue_action((self.vector.anim.play_animation_trigger, self.selected_anim_trigger_name))
 
-
     def key_code_to_anim_name(self, key_code):
         key_num = key_code - ord('0')
         anim_num = self.anim_index_for_key[key_num]
         anim_name = self.anim_names[anim_num]
 
-
-        if key_num==0:
+        if key_num == 0:
             # first_process(self)
-        #     queue 이용한 방법으로
-            self.action_queue.append(self.vector.behavior.say_text("hi! i am vector"))
-            print(len(self.action_queue))
-            self.action_queue.pop(0)
-            print(len(self.action_queue))
-            self.action_queue.append(self.vector.anim.play_animation('anim_onboarding_reacttoface_happy_01_head_angle_20'))
-            print(len(self.action_queue))
-            self.action_queue.pop(0)
-            print(len(self.action_queue))
-            self.action_queue.append(self.vector.behavior.say_text("nice to meet you!"))
-            print(len(self.action_queue))
-            self.action_queue.pop(0)
-            print(len(self.action_queue))
+            #     queue 이용한 방법으로
+            self.vector.behavior.say_text("hi! i am vector")
+            self.vector.anim.play_animation_trigger('GreetAfterLongTime')
+            self.vector.behavior.say_text("nice to meet you!")
+            return ''
+        elif key_num == 1:
+            self.vector.behavior.say_text("of course! i will try!")
+            # reply and then change angle, move toward the square
+            # Positive values turn to the left, negative values to the right.
+            self.vector.behavior.turn_in_place(degrees(90))  # or this can be placed with remote control
+            self.vector.behavior.drive_straight(distance_mm(200), speed_mmps(100))
+            return ''
+        elif key_num == 2:
+            self.vector.behavior.turn_in_place(degrees(-90))  # or this can be placed with remote control
+            self.vector.behavior.set_head_angle(MAX_HEAD_ANGLE)
+            self.vector.anim.play_animation('anim_eyepose_sad_instronspect')
+            self.vector.behavior.say_text("it seems scary..")
+            return ''
 
-        elif key_num==1:
-            second_process(self)
-        elif key_num==2:
-            third_process(self)
-        return ''
 
     def func_to_name(self, func):
         if func == self.vector.behavior.say_text:
@@ -453,13 +444,15 @@ def get_anim_sel_drop_downs():
         html_text += str(key) + """: """ + get_anim_sel_drop_down(key) + """<br>"""
     return html_text
 
+
 def get_anim_trigger_sel_drop_down():
-    html_text = "x: " # Add keyboard selector
+    html_text = "x: "  # Add keyboard selector
     html_text += """<select onchange="handleAnimTriggerDropDownSelect(this)" name="animTriggerSelector">"""
     for anim_trigger_name in flask_app.remote_control_vector.anim_trigger_names:
         html_text += """<option value=""" + anim_trigger_name + """>""" + anim_trigger_name + """</option>"""
     html_text += """</select>"""
     return html_text
+
 
 def to_js_bool_string(bool_value):
     return "true" if bool_value else "false"
@@ -524,7 +517,7 @@ def handle_index_page():
                 var gLastClientX = -1
                 var gLastClientY = -1
                 var gIsMouseLookEnabled = """ + to_js_bool_string(_is_mouse_look_enabled_by_default) + """
-                var gAreDebugAnnotationsEnabled = """+ str(flask_app.display_debug_annotations) + """
+                var gAreDebugAnnotationsEnabled = """ + str(flask_app.display_debug_annotations) + """
                 var gIsFreeplayEnabled = false
                 var gUserAgent = window.navigator.userAgent;
                 var gIsMicrosoftBrowser = gUserAgent.indexOf('MSIE ') > 0 || gUserAgent.indexOf('Trident/') > 0 || gUserAgent.indexOf('Edge/') > 0;
@@ -833,6 +826,7 @@ def handle_dropDownSelect():
 
     return ""
 
+
 @flask_app.route('/animTriggerDropDownSelect', methods=['POST'])
 def handle_animTriggerDropDownSelect():
     """Called from Javascript whenever the animTriggerSelector dropdown menu is selected (i.e. modified)"""
@@ -840,6 +834,7 @@ def handle_animTriggerDropDownSelect():
     selected_anim_trigger_name = message['animTriggerName']
     flask_app.remote_control_vector.selected_anim_trigger_name = selected_anim_trigger_name
     return ""
+
 
 @flask_app.route('/sayText', methods=['POST'])
 def handle_sayText():
@@ -849,24 +844,12 @@ def handle_sayText():
         flask_app.remote_control_vector.text_to_say = message['textEntered']
     return ""
 
-
-@flask_app.route('/updateVector', methods=['POST'])
-def handle_updateVector():
-    if flask_app.remote_control_vector:
-        flask_app.remote_control_vector.update()
-        action_queue_text = ""
-        i = 1
-        for action in flask_app.remote_control_vector.action_queue:
-            action_queue_text += str(i) + ": " + flask_app.remote_control_vector.action_to_text(action) + "<br>"
-            i += 1
-
-        return "Action Queue:<br>" + action_queue_text + "\n"
-    return ""
-
 def run():
     args = util.parse_command_args()
 
-    with anki_vector.AsyncRobot(args.serial, enable_face_detection=True, enable_custom_object_detection=True) as robot:
+    # with anki_vector.AsyncRobot(args.serial, enable_face_detection=True, enable_custom_object_detection=True) as robot:
+    with anki_vector.Robot() as robot:
+        # AsyncRobot to Robot
         flask_app.remote_control_vector = RemoteControlVector(robot)
         flask_app.display_debug_annotations = DebugAnnotations.ENABLED_ALL.value
 
@@ -875,7 +858,6 @@ def run():
         robot.camera.image_annotator.add_annotator('robotState', RobotStateDisplay)
 
         flask_helpers.run_flask(flask_app)
-
 
 if __name__ == '__main__':
     try:
