@@ -335,7 +335,21 @@ class RemoteControlVector:
 
 
         if key_num==0:
-            first_process(self)
+            # first_process(self)
+        #     queue 이용한 방법으로
+            self.action_queue.append(self.vector.behavior.say_text("hi! i am vector"))
+            print(len(self.action_queue))
+            self.action_queue.pop(0)
+            print(len(self.action_queue))
+            self.action_queue.append(self.vector.anim.play_animation('anim_onboarding_reacttoface_happy_01_head_angle_20'))
+            print(len(self.action_queue))
+            self.action_queue.pop(0)
+            print(len(self.action_queue))
+            self.action_queue.append(self.vector.behavior.say_text("nice to meet you!"))
+            print(len(self.action_queue))
+            self.action_queue.pop(0)
+            print(len(self.action_queue))
+
         elif key_num==1:
             second_process(self)
         elif key_num==2:
