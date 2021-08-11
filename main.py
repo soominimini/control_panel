@@ -44,32 +44,6 @@ except ImportError:
     sys.exit("Cannot import from PIL: Do `pip3 install --user Pillow` to install")
 
 
-    def turn_right(self):
-        self.vector.behavior.turn_in_place(degrees(-90))  # or this can be placed with remote control
-        return ''
-
-
-    def turn_left(self):
-        self.vector.behavior.turn_in_place(degrees(90))  # or this can be placed with remote control
-        return ''
-
-
-def second():
-    with anki_vector.Robot() as robot:
-        robot.behavior.say_text("of course! i will try!")
-        robot.behavior.turn_in_place(degrees(90))
-        robot.behavior.drive_straight(distance_mm(200), speed_mmps(100))
-    return ''
-
-
-def third():
-    with anki_vector.Robot() as robot:
-        robot.behavior.turn_in_place(degrees(-90))  # or this can be placed with remote control
-        robot.behavior.set_head_angle(MAX_HEAD_ANGLE)
-        robot.anim.play_animation('anim_eyepose_sad_instronspect')
-        robot.behavior.say_text("it seems scary..")
-    return
-
 
 def create_default_image(image_width, image_height, do_gradient=False):
     """Create a place-holder PIL image to use until we have a live feed from Vector"""
@@ -331,20 +305,21 @@ class RemoteControlVector:
             self.vector.behavior.say_text("hi! i am vector")
             self.vector.anim.play_animation_trigger('GreetAfterLongTime')
             self.vector.behavior.say_text("nice to meet you!")
-            return ''
+
         elif key_num == 1:
             self.vector.behavior.say_text("of course! i will try!")
             # reply and then change angle, move toward the square
             # Positive values turn to the left, negative values to the right.
             self.vector.behavior.turn_in_place(degrees(90))  # or this can be placed with remote control
             self.vector.behavior.drive_straight(distance_mm(200), speed_mmps(100))
-            return ''
+
         elif key_num == 2:
             self.vector.behavior.turn_in_place(degrees(-90))  # or this can be placed with remote control
             self.vector.behavior.set_head_angle(MAX_HEAD_ANGLE)
             self.vector.anim.play_animation('anim_eyepose_sad_instronspect')
             self.vector.behavior.say_text("it seems scary..")
-            return ''
+
+        return ''
 
 
     def func_to_name(self, func):
